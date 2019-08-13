@@ -81,8 +81,15 @@ public class ZookeeperRegistry extends FailbackRegistry {
         if (!group.startsWith(PATH_SEPARATOR)) {
             group = PATH_SEPARATOR + group;
         }
+        //注册到注册中心的节点
         this.root = group;
+        //使用zookeeperTansporter去连接
+        //ZookeeperTransport这里是生成的自适应实现，默认使用ZkClientZookeeperTransporter
+        //ZkClientZookeeperTransporter的connect去实例化一个ZkClient实例
+        //并且订阅状态变化的监听器subscribeStateChanges
+        //然后返回一个ZkClientZookeeperClient实例
         zkClient = zookeeperTransporter.connect(url);
+        //ZkClientZookeeperClient添加状态改变监听器
         zkClient.addStateListener(state -> {
             if (state == StateListener.RECONNECTED) {
                 try {
@@ -109,9 +116,32 @@ public class ZookeeperRegistry extends FailbackRegistry {
         }
     }
 
+    /**zookeeper节点
+     /dubbo
+     dubbo.common.hello.service.HelloService
+     providers
+         /dubbo/dubbo.common.hello.service.HelloService/providers/
+         dubbo%3A%2F%2F192.168.1.100%3A20880%2Fdubbo.common.hello.service.HelloService%3F
+         anyhost%3Dtrue%26application%3Ddubbo-provider%26
+         application.version%3D1.0%26dubbo%3D2.5.3%26environment%3Dproduct%26
+         interface%3Ddubbo.common.hello.service.HelloService%26methods%3DsayHello%26
+         organization%3Dchina%26owner%3Dcheng.xi%26pid%3D13239%26side%3D
+         provider%26timestamp%3D1489829293525
+     * **/
     @Override
     public void doRegister(URL url) {
         try {
+            //这里zkClient就是我们上面调用构造的时候生成的
+            //ZkClientZookeeperClient
+            //保存着连接到Zookeeper的zkClient实例
+            //开始注册，也就是在Zookeeper中创建节点
+            //这里toUrlPath获取到的path为：
+            ///dubbo/dubbo.common.hello.service.HelloService/providers/dubbo%3A%2F%2F192.168.1.100%3A20880%2F
+            //dubbo.common.hello.service.HelloService%3Fanyhost%3Dtrue%26application%3Ddubbo-provider%26
+            //application.version%3D1.0%26dubbo%3D2.5.3%26environment%3Dproduct%26interface%3D
+            //dubbo.common.hello.service.HelloService%26methods%3DsayHello%26
+            //organization%3Dchina%26owner%3Dcheng.xi%26pid%3D8920%26side%3Dprovider%26timestamp%3D1489828029449
+            //默认创建的节点是临时节点
             zkClient.create(toUrlPath(url), url.getParameter(DYNAMIC_KEY, true));
         } catch (Throwable e) {
             throw new RpcException("Failed to register " + url + " to zookeeper " + getUrl() + ", cause: " + e.getMessage(), e);

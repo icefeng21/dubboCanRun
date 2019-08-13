@@ -280,14 +280,33 @@ public class DubboProtocol extends AbstractProtocol {
 
     @Override
     public <T> Exporter<T> export(Invoker<T> invoker) throws RpcException {
+        //dubbo://10.42.0.1:20880/dubbo.common.hello.service.HelloService?
+        //anyhost=true&application=dubbo-provider&
+        //application.version=1.0&dubbo=2.5.3&environment=product&
+        //interface=dubbo.common.hello.service.HelloService&
+        //methods=sayHello&organization=china&owner=cheng.xi&
+        //pid=7876&side=provider&timestamp=1489057305001
         URL url = invoker.getUrl();
 
         // export service.
+        //key由serviceName，port，version，group组成
+        //当nio客户端发起远程调用时，nio服务端通过此key来决定调用哪个Exporter，也就是执行的Invoker。
+        //dubbo.common.hello.service.HelloService:20880
         String key = serviceKey(url);
+        //将Invoker转换成Exporter
+        //直接new一个新实例
+        //没做啥处理，就是做一些赋值操作
+        //这里的exporter就包含了invoker
         DubboExporter<T> exporter = new DubboExporter<T>(invoker, key, exporterMap);
         exporterMap.put(key, exporter);
 
         //export an stub service for dispatching event
+        //是否支持本地存根
+        //远程服务后，客户端通常只剩下接口，而实现全在服务器端，
+        //但提供方有些时候想在客户端也执行部分逻辑，比如：做ThreadLocal缓存，
+        //提前验证参数，调用失败后伪造容错数据等等，此时就需要在API中带上Stub，
+        //客户端生成Proxy实，会把Proxy通过构造函数传给Stub，
+        //然后把Stub暴露组给用户，Stub可以决定要不要去调Proxy。
         Boolean isStubSupportEvent = url.getParameter(STUB_EVENT_KEY, DEFAULT_STUB_EVENT);
         Boolean isCallbackservice = url.getParameter(IS_CALLBACK_SERVICE, false);
         if (isStubSupportEvent && !isCallbackservice) {
@@ -302,7 +321,7 @@ public class DubboProtocol extends AbstractProtocol {
                 stubServiceMethodsMap.put(url.getServiceKey(), stubServiceMethods);
             }
         }
-
+        //根据URL绑定IP与端口，建立NIO框架的Server
         openServer(url);
         optimizeSerialization(url);
 
@@ -311,11 +330,16 @@ public class DubboProtocol extends AbstractProtocol {
 
     private void openServer(URL url) {
         // find server.
+        //key是IP:PORT
+        //192.168.110.197:20880
         String key = url.getAddress();
         //client can export a service which's only for server to invoke
         boolean isServer = url.getParameter(IS_SERVER_KEY, true);
         if (isServer) {
             ExchangeServer server = serverMap.get(key);
+            //同一JVM中，同协议的服务，共享同一个Server，
+            //第一个暴露服务的时候创建server，
+            //以后相同协议的服务都使用同一个server
             if (server == null) {
                 synchronized (this) {
                     server = serverMap.get(key);
@@ -325,12 +349,24 @@ public class DubboProtocol extends AbstractProtocol {
                 }
             } else {
                 // server supports reset, use together with override
+                //同协议的服务后来暴露服务的则使用第一次创建的同一Server
+                //server支持reset,配合override功能使用
+                //accept、idleTimeout、threads、heartbeat参数的变化会引起Server的属性发生变化
+                //这时需要重新设置Server
                 server.reset(url);
             }
         }
     }
 
+    //url为：
+    //dubbo://192.168.110.197:20880/dubbo.common.hello.service.HelloService?
+    //anyhost=true&application=dubbo-provider&
+    //application.version=1.0&dubbo=2.5.3&environment=product&
+    //interface=dubbo.common.hello.service.HelloService&
+    //methods=sayHello&organization=china&owner=cheng.xi&
+    //pid=720&side=provider&timestamp=1489716708276
     private ExchangeServer createServer(URL url) {
+        //默认开启server关闭时发送readonly事件
         url = URLBuilder.from(url)
                 // send readonly event when server closes, it's enabled by default
                 .addParameterIfAbsent(CHANNEL_READONLYEVENT_SENT_KEY, Boolean.TRUE.toString())
@@ -338,6 +374,7 @@ public class DubboProtocol extends AbstractProtocol {
                 .addParameterIfAbsent(HEARTBEAT_KEY, String.valueOf(DEFAULT_HEARTBEAT))
                 .addParameter(CODEC_KEY, DubboCodec.NAME)
                 .build();
+        //默认使用netty
         String str = url.getParameter(SERVER_KEY, DEFAULT_REMOTING_SERVER);
 
         if (str != null && str.length() > 0 && !ExtensionLoader.getExtensionLoader(Transporter.class).hasExtension(str)) {
@@ -346,6 +383,11 @@ public class DubboProtocol extends AbstractProtocol {
 
         ExchangeServer server;
         try {
+            //Exchangers是门面类，里面封装的是Exchanger的逻辑。
+            //Exchanger默认只有一个实现HeaderExchanger.
+            //Exchanger负责数据交换和网络通信。
+            //从Protocol进入Exchanger，标志着程序进入了remote层。
+            //这里requestHandler是ExchangeHandlerAdapter
             server = Exchangers.bind(url, requestHandler);
         } catch (RemotingException e) {
             throw new RpcException("Fail to start server(url: " + url + ") " + e.getMessage(), e);

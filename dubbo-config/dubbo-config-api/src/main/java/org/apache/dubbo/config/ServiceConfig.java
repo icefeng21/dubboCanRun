@@ -291,9 +291,13 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
 
     public void checkAndUpdateSubConfigs() {
         // Use default configs defined explicitly on global configs
+        // 用于检测 provider、application 等核心配置类对象是否为空，
+        // 若为空，则尝试从其他配置类对象中获取相应的实例。
         completeCompoundConfigs();
         // Config Center should always being started first.
+        // 开启配置中心
         startConfigCenter();
+        // 检测 provider 是否为空，为空则新建一个，并通过系统变量为其初始化
         checkDefault();
         checkProtocol();
         checkApplication();
@@ -366,12 +370,13 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
     }
 
     public synchronized void export() {
+        //检查并且更新配置
         checkAndUpdateSubConfigs();
-
+        // 如果不应该暴露，则直接结束
         if (!shouldExport()) {
             return;
         }
-
+        // 如果使用延迟加载，则延迟delay时间后暴露服务
         if (shouldDelay()) {
             DELAY_EXPORT_EXECUTOR.schedule(this::doExport, getDelay(), TimeUnit.MILLISECONDS);
         } else {
@@ -412,6 +417,7 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
         if (StringUtils.isEmpty(path)) {
             path = interfaceName;
         }
+        // 多协议多注册中心暴露服务
         doExportUrls();
     }
 
@@ -449,8 +455,11 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     private void doExportUrls() {
+        // 加载注册中心链接
         List<URL> registryURLs = loadRegistries(true);
+        // 遍历 protocols，并在每个协议下暴露服务
         for (ProtocolConfig protocolConfig : protocols) {
+            // 以path、group、version来作为服务唯一性确定的key
             String pathKey = URL.buildKey(getContextPath(protocolConfig).map(p -> p + "/" + path).orElse(path), group, version);
             ProviderModel providerModel = new ProviderModel(pathKey, ref, interfaceClass);
             ApplicationModel.initProviderModel(pathKey, providerModel);
@@ -465,8 +474,9 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
         }
 
         Map<String, String> map = new HashMap<String, String>();
+        //添加 side
         map.put(SIDE_KEY, PROVIDER_SIDE);
-
+        //添加版本、时间戳以及进程号等信息到 map 中
         appendRuntimeParameters(map);
         appendParameters(map, metrics);
         appendParameters(map, application);
@@ -478,6 +488,9 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
         appendParameters(map, this);
         if (CollectionUtils.isNotEmpty(methods)) {
             for (MethodConfig method : methods) {
+                // 添加 MethodConfig 对象的字段信息到 map 中，键 = 方法名.属性名。
+                // 比如存储 <dubbo:method name="sayHello" retries="2"> 对应的 MethodConfig，
+                // 键 = sayHello.retries，map = {"sayHello.retries": 2, "xxx": "yyy"}
                 appendParameters(map, method, method.getName());
                 String retryKey = method.getName() + ".retry";
                 if (map.containsKey(retryKey)) {
@@ -540,7 +553,7 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
             if (revision != null && revision.length() > 0) {
                 map.put(REVISION_KEY, revision);
             }
-
+            //[sayHello]
             String[] methods = Wrapper.getWrapper(interfaceClass).getMethodNames();
             if (methods.length == 0) {
                 logger.warn("No method found in service interface " + interfaceClass.getName());
@@ -560,7 +573,7 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
         String host = this.findConfigedHosts(protocolConfig, registryURLs, map);
         Integer port = this.findConfigedPorts(protocolConfig, name, map);
         URL url = new URL(name, host, port, getContextPath(protocolConfig).map(p -> p + "/" + path).orElse(path), map);
-
+// —————————————————————————————————————分割线———————————————————————————————————————下方为服务暴露
         if (ExtensionLoader.getExtensionLoader(ConfiguratorFactory.class)
                 .hasExtension(url.getProtocol())) {
             url = ExtensionLoader.getExtensionLoader(ConfiguratorFactory.class)
@@ -603,9 +616,54 @@ public class ServiceConfig<T> extends AbstractServiceConfig {
 
                         Invoker<?> invoker = PROXY_FACTORY.getInvoker(ref, (Class) interfaceClass, registryURL.addParameterAndEncoded(EXPORT_KEY, url.toFullString()));
                         DelegateProviderMetaDataInvoker wrapperInvoker = new DelegateProviderMetaDataInvoker(invoker, this);
-
+                        //RegistryProtocol.export
                         Exporter<?> exporter = protocol.export(wrapperInvoker);
                         exporters.add(exporter);
+                        /**
+                         *
+                        public class Protocol$Adpative implements com.alibaba.dubbo.rpc.Protocol {
+                            public com.alibaba.dubbo.rpc.Invoker refer(java.lang.Class arg0, com.alibaba.dubbo.common.URL arg1) throws java.lang.Class {
+                                if (arg1 == null)
+                                    throw new IllegalArgumentException("url == null");
+
+                                com.alibaba.dubbo.common.URL url = arg1;
+                                String extName = (url.getProtocol() == null ? "dubbo" : url.getProtocol());
+                                if (extName == null)
+                                    throw new IllegalStateException("Fail to get extension(com.alibaba.dubbo.rpc.Protocol) name from url(" + url.toString() + ") use keys([protocol])");
+
+                                com.alibaba.dubbo.rpc.Protocol extension = (com.alibaba.dubbo.rpc.Protocol) ExtensionLoader.getExtensionLoader(com.alibaba.dubbo.rpc.Protocol.class).getExtension(extName);
+
+                                return extension.refer(arg0, arg1);
+                            }
+
+                            public com.alibaba.dubbo.rpc.Exporter export(com.alibaba.dubbo.rpc.Invoker arg0) throws com.alibaba.dubbo.rpc.Invoker {
+                                if (arg0 == null)
+                                    throw new IllegalArgumentException("com.alibaba.dubbo.rpc.Invoker argument == null");
+
+                                if (arg0.getUrl() == null)
+                                    throw new IllegalArgumentException("com.alibaba.dubbo.rpc.Invoker argument getUrl() == null");
+                                com.alibaba.dubbo.common.URL url = arg0.getUrl();
+                                //根据URL配置信息获取Protocol协议，默认是dubbo
+                                String extName = (url.getProtocol() == null ? "dubbo" : url.getProtocol());
+                                if (extName == null)
+                                    throw new IllegalStateException("Fail to get extension(com.alibaba.dubbo.rpc.Protocol) name from url(" + url.toString() + ") use keys([protocol])");
+                                //根据协议名，获取Protocol的实现
+                                //获得Protocol的实现过程中，会对Protocol先进行依赖注入，然后进行Wrapper包装，最后返回被修改过的Protocol
+                                //包装经过了ProtocolFilterWrapper，ProtocolListenerWrapper，RegistryProtocol
+                                com.alibaba.dubbo.rpc.Protocol extension = (com.alibaba.dubbo.rpc.Protocol) ExtensionLoader.getExtensionLoader(com.alibaba.dubbo.rpc.Protocol.class).getExtension(extName);
+
+                                return extension.export(arg0);
+                            }
+
+                            public void destroy() {
+                                throw new UnsupportedOperationException("method public abstract void com.alibaba.dubbo.rpc.Protocol.destroy() of interface com.alibaba.dubbo.rpc.Protocol is not adaptive method!");
+                            }
+
+                            public int getDefaultPort() {
+                                throw new UnsupportedOperationException("method public abstract int com.alibaba.dubbo.rpc.Protocol.getDefaultPort() of interface com.alibaba.dubbo.rpc.Protocol is not adaptive method!");
+                            }
+                        }
+                         * **/
                     }
                 } else {
                     Invoker<?> invoker = PROXY_FACTORY.getInvoker(ref, (Class) interfaceClass, url);

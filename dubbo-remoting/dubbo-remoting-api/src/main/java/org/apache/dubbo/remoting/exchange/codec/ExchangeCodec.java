@@ -254,35 +254,48 @@ public class ExchangeCodec extends TelnetCodec {
     }
 
     protected void encodeResponse(Channel channel, ChannelBuffer buffer, Response res) throws IOException {
+        //获取buffer的写入位置
         int savedWriteIndex = buffer.writerIndex();
         try {
+            //序列化方式
+            //也是根据SPI扩展来获取，url中没指定的话默认使用hessian2
             Serialization serialization = getSerialization(channel);
             // header.
+            //长度为16字节的数组，协议头
             byte[] header = new byte[HEADER_LENGTH];
             // set magic number.
             Bytes.short2bytes(MAGIC, header);
             // set request and serialization flag.
+            //序列化方式
             header[2] = serialization.getContentTypeId();
+            //心跳消息还是正常消息
             if (res.isHeartbeat()) {
                 header[2] |= FLAG_EVENT;
             }
             // set response status.
+            //响应状态
             byte status = res.getStatus();
             header[3] = status;
             // set request id.
+            //设置请求id
             Bytes.long2bytes(res.getId(), header, 4);
-
+            //buffer为1024字节的ChannelBuffer
+            //需要再加上协议头的长度之后，才是正确的写入位置
             buffer.writerIndex(savedWriteIndex + HEADER_LENGTH);
             ChannelBufferOutputStream bos = new ChannelBufferOutputStream(buffer);
             ObjectOutput out = serialization.serialize(channel.getUrl(), bos);
             // encode response data or error message.
+            // 对响应信息或者错误消息进行编码
             if (status == Response.OK) {
                 if (res.isHeartbeat()) {
+                    //心跳
                     encodeHeartbeatData(channel, out, res.getResult());
                 } else {
+                    //正常响应
                     encodeResponseData(channel, out, res.getResult(), res.getVersion());
                 }
             } else {
+                //错误消息
                 out.writeUTF(res.getErrorMessage());
             }
             out.flushBuffer();
@@ -291,12 +304,15 @@ public class ExchangeCodec extends TelnetCodec {
             }
             bos.flush();
             bos.close();
-
+            //写出去的消息的长度
             int len = bos.writtenBytes();
+            //查看消息长度是否过长
             checkPayload(channel, len);
             Bytes.int2bytes(len, header, 12);
             // write
+            //重置写入的位置
             buffer.writerIndex(savedWriteIndex);
+            //向buffer中写入消息头
             buffer.writeBytes(header); // write header.
             buffer.writerIndex(savedWriteIndex + HEADER_LENGTH + len);
         } catch (Throwable t) {

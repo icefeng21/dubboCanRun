@@ -49,4 +49,44 @@ public class JavassistProxyFactory extends AbstractProxyFactory {
         };
     }
 
+
+    /**
+    public void setPropertyValue(Object o, String n, Object v) {
+        dubbo.provider.hello.service.impl.HelloServiceImpl w;
+        try {
+            w = ((dubbo.provider.hello.service.impl.HelloServiceImpl) $1);
+        } catch (Throwable e) {
+            throw new IllegalArgumentException(e);
+        }
+        throw new com.alibaba.dubbo.common.bytecode.NoSuchPropertyException("Not found property \"" + $2 + "\" filed or setter method in class dubbo.provider.hello.service.impl.HelloServiceImpl.");
+    }
+
+    public Object getPropertyValue(Object o, String n) {
+        dubbo.provider.hello.service.impl.HelloServiceImpl w;
+        try {
+            w = ((dubbo.provider.hello.service.impl.HelloServiceImpl) $1);
+        } catch (Throwable e) {
+            throw new IllegalArgumentException(e);
+        }
+        throw new com.alibaba.dubbo.common.bytecode.NoSuchPropertyException("Not found property \"" + $2 + "\" filed or setter method in class dubbo.provider.hello.service.impl.HelloServiceImpl.");
+    }
+
+     public Object invokeMethod(Object o, String n, Class[] p, Object[] v) throws java.lang.reflect.InvocationTargetException {
+        org.apache.dubbo.demo.DemoService w;
+        try {
+            w = ((org.apache.dubbo.demo.DemoService) $1);
+        } catch (Throwable e) {
+            throw new IllegalArgumentException(e);
+        }
+        try {
+            if ("sayHello".equals($2) && $3.length == 1) {
+                return ($w) w.sayHello((java.lang.String) $4[0]);
+            }
+        } catch (Throwable e) {
+            throw new java.lang.reflect.InvocationTargetException(e);
+        }
+        throw new org.apache.dubbo.common.bytecode.NoSuchMethodException("Not found method \"" + $2 + "\" in class org.apache.dubbo.demo.DemoService.");
+    }
+**/
+
 }

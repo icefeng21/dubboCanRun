@@ -103,6 +103,12 @@ public class ExtensionLoader<T> {
 
     private ExtensionLoader(Class<?> type) {
         this.type = type;
+        //对于扩展类型是ExtensionFactory的，设置为null
+        //getAdaptiveExtension方法获取一个运行时自适应的扩展类型
+        //每个Extension只能有一个@Adaptive类型的实现，如果么有，dubbo会自动生成一个类
+        //objectFactory是一个ExtensionFactory类型的属性，主要用于加载需要注入的类型的实现
+        //objectFactory主要用在注入那一步，详细说明见注入时候的说明
+        //这里记住非ExtensionFactory类型的返回的都是一个AdaptiveExtensionFactory，ExtensionFactory类型返回null
         objectFactory = (type == ExtensionFactory.class ? null : ExtensionLoader.getExtensionLoader(ExtensionFactory.class).getAdaptiveExtension());
     }
 

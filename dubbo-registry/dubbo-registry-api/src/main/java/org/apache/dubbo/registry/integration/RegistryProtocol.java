@@ -182,6 +182,7 @@ public class RegistryProtocol implements Protocol {
 
     public void register(URL registryUrl, URL registeredProviderUrl) {
         Registry registry = registryFactory.getRegistry(registryUrl);
+        //FailbackRegistry
         registry.register(registeredProviderUrl);
     }
 
@@ -192,40 +193,70 @@ public class RegistryProtocol implements Protocol {
 
     @Override
     public <T> Exporter<T> export(final Invoker<T> originInvoker) throws RpcException {
+        // 获得注册中心的url
+        /**
+         * zookeeper://127.0.0.1:2181/org.apache.dubbo.registry.RegistryService?application=demo-provider&dubbo=2.0.2&export=dubbo%3A%2F%2F172.25.161.254%3A20880%2Forg.apache.dubbo.demo.DemoService%3Fanyhost%3Dtrue%26application%3Ddemo-provider%26bean.name%3Dorg.apache.dubbo.demo.DemoService%26bind.ip%3D172.25.161.254%26bind.port%3D20880%26deprecated%3Dfalse%26dubbo%3D2.0.2%26dynamic%3Dtrue%26generic%3Dfalse%26interface%3Dorg.apache.dubbo.demo.DemoService%26methods%3DsayHello%26pid%3D3854%26qos.port%3D22222%26register%3Dtrue%26release%3D%26side%3Dprovider%26timestamp%3D1562061108749&pid=3854&qos.port=22222&timestamp=1562061108730
+         * **/
         URL registryUrl = getRegistryUrl(originInvoker);
         // url to export locally
+        //获得已经注册的服务提供者url
+        /**
+         * dubbo://172.25.161.254:20880/org.apache.dubbo.demo.DemoService?anyhost=true&application=demo-provider&bean.name=org.apache.dubbo.demo.DemoService&bind.ip=172.25.161.254&bind.port=20880&deprecated=false&dubbo=2.0.2&dynamic=true&generic=false&interface=org.apache.dubbo.demo.DemoService&methods=sayHello&pid=3854&qos.port=22222&register=true&release=&side=provider&timestamp=1562061108749
+         * **/
         URL providerUrl = getProviderUrl(originInvoker);
 
         // Subscribe the override data
         // FIXME When the provider subscribes, it will affect the scene : a certain JVM exposes the service and call
         //  the same service. Because the subscribed is cached key with the name of the service, it causes the
         //  subscription information to cover.
+        // 获取override订阅 URL
+        /**
+         * provider://172.25.161.254:20880/org.apache.dubbo.demo.DemoService?anyhost=true&application=demo-provider&bean.name=org.apache.dubbo.demo.DemoService&bind.ip=172.25.161.254&bind.port=20880&category=configurators&check=false&deprecated=false&dubbo=2.0.2&dynamic=true&generic=false&interface=org.apache.dubbo.demo.DemoService&methods=sayHello&pid=3854&qos.port=22222&register=true&release=&side=provider&timestamp=1562061108749
+         * **/
         final URL overrideSubscribeUrl = getSubscribedOverrideUrl(providerUrl);
+        // 创建override的监听器
         final OverrideListener overrideSubscribeListener = new OverrideListener(overrideSubscribeUrl, originInvoker);
+        // 把监听器添加到集合
         overrideListeners.put(overrideSubscribeUrl, overrideSubscribeListener);
-
+        // 根据override的配置来覆盖原来的url，使得配置是最新的。
         providerUrl = overrideUrlWithConfig(providerUrl, overrideSubscribeListener);
         //export invoker
+        // 服务暴露
         final ExporterChangeableWrapper<T> exporter = doLocalExport(originInvoker, providerUrl);
 
         // url to registry
+        //根据 URL 加载 Registry 实现类，比如ZookeeperRegistry
         final Registry registry = getRegistry(originInvoker);
+        // 返回注册到注册表的url并过滤url参数一次
+        //dubbo://192.168.1.100:20880/dubbo.common.hello.service.HelloService?
+        //anyhost=true&application=dubbo-provider&application.version=1.0&dubbo=2.5.3&environment=product&
+        //interface=dubbo.common.hello.service.HelloService&methods=sayHello&
+        //organization=china&owner=cheng.xi&pid=9457&side=provider&timestamp=1489807681627
         final URL registeredProviderUrl = getRegisteredProviderUrl(providerUrl, registryUrl);
+        // 生成ProviderInvokerWrapper，它会保存服务提供方和消费方的调用地址和代理对象
         ProviderInvokerWrapper<T> providerInvokerWrapper = ProviderConsumerRegTable.registerProvider(originInvoker,
                 registryUrl, registeredProviderUrl);
+        // ————————————————————————————————分割线——————————————————————————————————————服务暴露（上）服务注册（下）
         //to judge if we need to delay publish
+        // 获取 register 参数
         boolean register = registeredProviderUrl.getParameter("register", true);
+        // 如果需要注册服务
         if (register) {
+            // 向注册中心注册服务
             register(registryUrl, registeredProviderUrl);
+            // 设置reg为true，表示服务注册
             providerInvokerWrapper.setReg(true);
         }
 
         // Deprecated! Subscribe to override rules in 2.6.x or before.
+        // 向注册中心进行订阅 override 数据
         registry.subscribe(overrideSubscribeUrl, overrideSubscribeListener);
-
+        // 设置注册中心url
         exporter.setRegisterUrl(registeredProviderUrl);
+        // 设置override数据订阅的url
         exporter.setSubscribeUrl(overrideSubscribeUrl);
         //Ensure that a new exporter instance is returned every time export
+        // 创建并返回 DestroyableExporter
         return new DestroyableExporter<>(exporter);
     }
 
@@ -238,10 +269,29 @@ public class RegistryProtocol implements Protocol {
 
     @SuppressWarnings("unchecked")
     private <T> ExporterChangeableWrapper<T> doLocalExport(final Invoker<T> originInvoker, URL providerUrl) {
+        //原始的invoker中的url：
+        //registry://127.0.0.1:2181/com.alibaba.dubbo.registry.RegistryService?
+        //application=dubbo-provider&application.version=1.0&dubbo=2.5.3
+        //&environment=product&export=dubbo%3A%2F%2F10.42.0.1%3A20880%2F
+        //dubbo.common.hello.service.HelloService%3Fanyhost%3Dtrue%26application%3Ddubbo-provider%26
+        //application.version%3D1.0%26dubbo%3D2.5.3%26environment%3Dproduct%26
+        //interface%3Ddubbo.common.hello.service.HelloService%26methods%3DsayHello%26
+        //organization%3Dchina%26owner%3Dcheng.xi%26pid%3D7876%26side%3Dprovider%26timestamp%3D1489057305001&
+        //organization=china&owner=cheng.xi&pid=7876&registry=zookeeper&timestamp=1489057304900
+
+        //从原始的invoker中得到的key：
+        //dubbo://10.42.0.1:20880/dubbo.common.hello.service.HelloService?anyhost=true&application=dubbo-provider&
+        //application.version=1.0&dubbo=2.5.3&environment=product&interface=dubbo.common.hello.service.HelloService&
+        //methods=sayHello&organization=china&owner=cheng.xi&pid=7876&side=provider&timestamp=1489057305001
+
         String key = getCacheKey(originInvoker);
 
         return (ExporterChangeableWrapper<T>) bounds.computeIfAbsent(key, s -> {
             Invoker<?> invokerDelegate = new InvokerDelegate<>(originInvoker, providerUrl);
+            //此处protocol还是最上面生成的代码，调用代码中的export方法，会根据协议名选择调用具体的实现类
+            //这里我们需要调用DubboProtocol的export方法
+            //这里的使用具体协议进行导出的invoker是个代理invoker
+            //导出完之后，返回一个新的ExporterChangeableWrapper实例
             return new ExporterChangeableWrapper<>((Exporter<T>) protocol.export(invokerDelegate), originInvoker);
         });
     }
@@ -295,13 +345,24 @@ public class RegistryProtocol implements Protocol {
      */
     private Registry getRegistry(final Invoker<?> originInvoker) {
         URL registryUrl = getRegistryUrl(originInvoker);
+        //根据SPI机制获取具体的Registry实例，这里获取到的是ZookeeperRegistry
         return registryFactory.getRegistry(registryUrl);
     }
 
     private URL getRegistryUrl(Invoker<?> originInvoker) {
         URL registryUrl = originInvoker.getUrl();
         if (REGISTRY_PROTOCOL.equals(registryUrl.getProtocol())) {
+            //获取registry的值，这里获得是zookeeper，默认值是dubbo
             String protocol = registryUrl.getParameter(REGISTRY_KEY, DEFAULT_REGISTRY);
+            //这里获取到的url为：
+            //zookeeper://127.0.0.1:2181/com.alibaba.dubbo.registry.RegistryService?
+            //application=dubbo-provider&application.version=1.0&dubbo=2.5.3&
+            //environment=product&export=dubbo%3A%2F%2F192.168.1.100%3A20880%2F
+            //dubbo.common.hello.service.HelloService%3Fanyhost%3Dtrue%26application%3Ddubbo-provider%26
+            //application.version%3D1.0%26dubbo%3D2.5.3%26environment%3Dproduct%26
+            //interface%3Ddubbo.common.hello.service.HelloService%26methods%3DsayHello%26
+            //organization%3Dchina%26owner%3Dcheng.xi%26pid%3D9457%26side%3Dprovider%26timestamp%3D1489807681627&organization=china&owner=cheng.xi&
+            //pid=9457&timestamp=1489807680193
             registryUrl = registryUrl.setProtocol(protocol).removeParameter(REGISTRY_KEY);
         }
         return registryUrl;
@@ -376,7 +437,9 @@ public class RegistryProtocol implements Protocol {
                 .setProtocol(url.getParameter(REGISTRY_KEY, DEFAULT_REGISTRY))
                 .removeParameter(REGISTRY_KEY)
                 .build();
+        // 获得注册中心实例
         Registry registry = registryFactory.getRegistry(url);
+        // 如果是注册中心服务，则返回注册中心服务的invoker
         if (RegistryService.class.equals(type)) {
             return proxyFactory.getInvoker((T) registry, type, url);
         }
@@ -385,10 +448,12 @@ public class RegistryProtocol implements Protocol {
         Map<String, String> qs = StringUtils.parseQueryString(url.getParameterAndDecoded(REFER_KEY));
         String group = qs.get(GROUP_KEY);
         if (group != null && group.length() > 0) {
+            // 如果有多个组，或者组配置为*，则使用MergeableCluster，并调用 doRefer 继续执行服务引用逻辑
             if ((COMMA_SPLIT_PATTERN.split(group)).length > 1 || "*".equals(group)) {
                 return doRefer(getMergeableCluster(), registry, type, url);
             }
         }
+        // 只有一个组或者没有组配置，则直接执行doRefer
         return doRefer(cluster, registry, type, url);
     }
 
@@ -402,16 +467,22 @@ public class RegistryProtocol implements Protocol {
         directory.setProtocol(protocol);
         // all attributes of REFER_KEY
         Map<String, String> parameters = new HashMap<String, String>(directory.getUrl().getParameters());
+        // 生成服务消费者链接
         URL subscribeUrl = new URL(CONSUMER_PROTOCOL, parameters.remove(REGISTER_IP_KEY), 0, type.getName(), parameters);
+        // 注册服务消费者，在 consumers 目录下新节点
         if (!ANY_VALUE.equals(url.getServiceInterface()) && url.getParameter(REGISTER_KEY, true)) {
             directory.setRegisteredConsumerUrl(getRegisteredConsumerUrl(subscribeUrl, url));
+            // 注册服务消费者
             registry.register(directory.getRegisteredConsumerUrl());
         }
+        // 创建路由规则链
         directory.buildRouterChain(subscribeUrl);
+        // 订阅 providers、configurators、routers 等节点数据
         directory.subscribe(subscribeUrl.addParameter(CATEGORY_KEY,
                 PROVIDERS_CATEGORY + "," + CONFIGURATORS_CATEGORY + "," + ROUTERS_CATEGORY));
-
+        // 一个注册中心可能有多个服务提供者，因此这里需要将多个服务提供者合并为一个，生成一个invoker
         Invoker invoker = cluster.join(directory);
+        // 在服务提供者处注册消费者
         ProviderConsumerRegTable.registerConsumer(invoker, url, subscribeUrl, directory);
         return invoker;
     }

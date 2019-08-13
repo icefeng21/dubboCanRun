@@ -41,6 +41,10 @@ public class HeaderExchanger implements Exchanger {
 
     @Override
     public ExchangeServer bind(URL url, ExchangeHandler handler) throws RemotingException {
+        //直接返回一个HeaderExchangeServer:在HeaderExchangerServer包装的时候会启动心跳定时器startHeatbeatTimer();，暂不解析。
+        //先创建一个HeaderExchangeHandler
+        //再创建一个DecodeHandler
+        //最后调用Transporters.bind
         return new HeaderExchangeServer(Transporters.bind(url, new DecodeHandler(new HeaderExchangeHandler(handler))));
     }
 
