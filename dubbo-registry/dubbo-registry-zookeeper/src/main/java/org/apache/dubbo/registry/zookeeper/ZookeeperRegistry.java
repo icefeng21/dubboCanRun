@@ -73,10 +73,12 @@ public class ZookeeperRegistry extends FailbackRegistry {
     private final ZookeeperClient zkClient;
 
     public ZookeeperRegistry(URL url, ZookeeperTransporter zookeeperTransporter) {
+        //这里会先经过AbstractRegistry的处理，然后经过FailbackRegistry的处理（解释在下面）
         super(url);
         if (url.isAnyHost()) {
             throw new IllegalStateException("registry address == null");
         }
+        //服务分组，默认dubbo
         String group = url.getParameter(GROUP_KEY, DEFAULT_ROOT);
         if (!group.startsWith(PATH_SEPARATOR)) {
             group = PATH_SEPARATOR + group;
@@ -84,10 +86,10 @@ public class ZookeeperRegistry extends FailbackRegistry {
         //注册到注册中心的节点
         this.root = group;
         //使用zookeeperTansporter去连接
-        //ZookeeperTransport这里是生成的自适应实现，默认使用ZkClientZookeeperTransporter
-        //ZkClientZookeeperTransporter的connect去实例化一个ZkClient实例
+        //ZookeeperTransport这里是生成的自适应实现，默认使用CuratorZookeeperTransporter
+        //CuratorZookeeperTransporter的connect去实例化一个ZkClient实例
         //并且订阅状态变化的监听器subscribeStateChanges
-        //然后返回一个ZkClientZookeeperClient实例
+        //然后返回一个CuratorZookeeperTransporter实例
         zkClient = zookeeperTransporter.connect(url);
         //ZkClientZookeeperClient添加状态改变监听器
         zkClient.addStateListener(state -> {

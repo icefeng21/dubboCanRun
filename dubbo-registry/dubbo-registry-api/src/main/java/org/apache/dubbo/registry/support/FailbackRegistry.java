@@ -68,6 +68,7 @@ public abstract class FailbackRegistry extends AbstractRegistry {
     private final HashedWheelTimer retryTimer;
 
     public FailbackRegistry(URL url) {
+        //设置registryUrl
         super(url);
         //重试时间，默认5000ms
         this.retryPeriod = url.getParameter(REGISTRY_RETRY_PERIOD_KEY, DEFAULT_REGISTRY_RETRY_PERIOD);

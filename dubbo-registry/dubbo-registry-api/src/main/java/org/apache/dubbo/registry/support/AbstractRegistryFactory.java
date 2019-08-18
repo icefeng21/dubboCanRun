@@ -86,6 +86,11 @@ public abstract class AbstractRegistryFactory implements RegistryFactory {
 
     @Override
     public Registry getRegistry(URL url) {
+        //这里url是
+        //zookeeper://127.0.0.1:2181/com.alibaba.dubbo.registry.RegistryService?
+        //application=dubbo-consumer&dubbo=2.5.3&
+        //interface=com.alibaba.dubbo.registry.RegistryService&
+        //pid=12272&timestamp=1489318676641
         url = URLBuilder.from(url)
                 .setPath(RegistryService.class.getName())
                 .addParameter(INTERFACE_KEY, RegistryService.class.getName())
@@ -103,8 +108,8 @@ public abstract class AbstractRegistryFactory implements RegistryFactory {
             if (registry != null) {
                 return registry;
             }
-            //创建registry，会直接new一个ZookeeperRegistry返回
-            //具体创建实例是子类来实现的
+            //这里用的是ZookeeperRegistryFactory
+            //返回的Registry中封装了已经连接到Zookeeper的zkClient实例
             //create registry by spi/ioc
             registry = createRegistry(url);
             if (registry == null) {

@@ -433,17 +433,26 @@ public class RegistryProtocol implements Protocol {
     @Override
     @SuppressWarnings("unchecked")
     public <T> Invoker<T> refer(Class<T> type, URL url) throws RpcException {
+        //zookeeper://127.0.0.1:2181/com.alibaba.dubbo.registry.RegistryService?
+        //application=dubbo-consumer&dubbo=2.5.3&pid=12272&
+        //refer=application%3Ddubbo-consumer%26dubbo%3D2.5.3%26
+        //interface%3Ddubbo.common.hello.service.HelloService%26
+        //methods%3DsayHello%26pid%3D12272%26side%3D
+        //consumer%26timeout%3D100000%26
+        //timestamp%3D1489318676447&timestamp=1489318676641
         url = URLBuilder.from(url)
                 .setProtocol(url.getParameter(REGISTRY_KEY, DEFAULT_REGISTRY))
                 .removeParameter(REGISTRY_KEY)
                 .build();
-        // 获得注册中心实例
+        //根据url获取Registry对象
+        //先连接注册中心，把消费者注册到注册中心 ：AbstractRegistryFactory--》ZookeeperRegistryFactory
         Registry registry = registryFactory.getRegistry(url);
         // 如果是注册中心服务，则返回注册中心服务的invoker
+        //判断引用是否是注册中心RegistryService，如果是直接返回刚得到的注册中心服务
         if (RegistryService.class.equals(type)) {
             return proxyFactory.getInvoker((T) registry, type, url);
         }
-
+        //以下是普通服务，需要进入注册中心和集群下面的逻辑
         // group="a,b" or group="*"
         Map<String, String> qs = StringUtils.parseQueryString(url.getParameterAndDecoded(REFER_KEY));
         String group = qs.get(GROUP_KEY);
@@ -454,6 +463,7 @@ public class RegistryProtocol implements Protocol {
             }
         }
         // 只有一个组或者没有组配置，则直接执行doRefer
+        //选择配置的集群策略（cluster="failback"）或者默认策略
         return doRefer(cluster, registry, type, url);
     }
 
